@@ -1,0 +1,14 @@
+# Gradle and build outputs
+.gradle/
+**/build/
+
+# Local environment
+local.properties
+
+# Android signing files (never commit private keys)
+*.jks
+*.keystore
+
+# IDE files
+.idea/
+*.iml
