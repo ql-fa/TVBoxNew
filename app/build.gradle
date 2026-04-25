@@ -27,7 +27,7 @@ android {
         minSdkVersion 16
         targetSdkVersion 26
         versionCode 1
-        versionName 'nightly'
+        versionName resolveApkVersion('nightly')
         multiDexEnabled true
         //设置room的Schema的位置
         javaCompileOptions {
