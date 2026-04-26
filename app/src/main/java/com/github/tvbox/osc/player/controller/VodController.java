@@ -17,8 +17,6 @@ import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.bean.IJKCode;
 import com.github.tvbox.osc.bean.ParseBean;
-import com.github.tvbox.osc.player.thirdparty.MXPlayer;
-import com.github.tvbox.osc.player.thirdparty.ReexPlayer;
 import com.github.tvbox.osc.ui.adapter.ParseAdapter;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.PlayerHelper;
@@ -92,7 +90,7 @@ public class VodController extends BaseController {
     TextView mPreBtn;
     TextView mPlayerScaleBtn;
     TextView mPlayerSpeedBtn;
-    TextView mPlayerBtn;
+    TextView mPlayerCacheBtn;
     TextView mPlayerIJKBtn;
     TextView mPlayerRetry;
     TextView mPlayerTimeStartBtn;
@@ -117,7 +115,7 @@ public class VodController extends BaseController {
         mPreBtn = findViewById(R.id.play_pre);
         mPlayerScaleBtn = findViewById(R.id.play_scale);
         mPlayerSpeedBtn = findViewById(R.id.play_speed);
-        mPlayerBtn = findViewById(R.id.play_player);
+        mPlayerCacheBtn = findViewById(R.id.play_cache);
         mPlayerIJKBtn = findViewById(R.id.play_ijk);
         mPlayerTimeStartBtn = findViewById(R.id.play_time_start);
         mPlayerTimeSkipBtn = findViewById(R.id.play_time_end);
@@ -228,35 +226,6 @@ public class VodController extends BaseController {
                 }
             }
         });
-        mPlayerBtn.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                try {
-                    int playerType = mPlayerConfig.getInt("pl");
-                    boolean playerVail = false;
-                    do {
-                        playerType++;
-                        if (playerType <= 2) {
-                            playerVail = true;
-                        } else if (playerType == 10) {
-                            playerVail = mxPlayerExist;
-                        } else if (playerType == 11) {
-                            playerVail = reexPlayerExist;
-                        } else if (playerType > 11) {
-                            playerType = 0;
-                            playerVail = true;
-                        }
-                    } while (!playerVail);
-                    mPlayerConfig.put("pl", playerType);
-                    updatePlayerCfgView();
-                    listener.updatePlayerCfg();
-                    listener.replay();
-                    // hideBottom();
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
         mPlayerIJKBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -342,20 +311,14 @@ public class VodController extends BaseController {
 
     private JSONObject mPlayerConfig = null;
 
-    private boolean mxPlayerExist = false;
-    private boolean reexPlayerExist = false;
-
     public void setPlayerConfig(JSONObject playerCfg) {
         this.mPlayerConfig = playerCfg;
         updatePlayerCfgView();
-        mxPlayerExist = MXPlayer.getPackageInfo() != null;
-        reexPlayerExist = ReexPlayer.getPackageInfo() != null;
     }
 
     void updatePlayerCfgView() {
         try {
             int playerType = mPlayerConfig.getInt("pl");
-            mPlayerBtn.setText(PlayerHelper.getPlayerName(playerType));
             mPlayerScaleBtn.setText(PlayerHelper.getScaleName(mPlayerConfig.getInt("sc")));
             mPlayerIJKBtn.setText(mPlayerConfig.getString("ijk"));
             mPlayerIJKBtn.setVisibility(playerType == 1 ? VISIBLE : GONE);
@@ -422,9 +385,10 @@ public class VodController extends BaseController {
         }
         long totalBufferedMs = duration <= 0 ? 0 : duration * percent / 100L;
         long aheadBufferMs = Math.max(0L, totalBufferedMs - Math.max(0, position));
-        mTotalTime.setText(PlayerUtils.stringForTime(duration)
-                + "  缓存"
-                + PlayerUtils.stringForTime((int) aheadBufferMs));
+        mTotalTime.setText(PlayerUtils.stringForTime(duration));
+        if (mPlayerCacheBtn != null) {
+            mPlayerCacheBtn.setText("缓存" + PlayerUtils.stringForTime((int) aheadBufferMs));
+        }
     }
 
     @Override
