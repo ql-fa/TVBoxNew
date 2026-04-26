@@ -171,6 +171,13 @@ public class PlayActivity extends BaseActivity {
             @Override
             public void replay() {
                 autoRetryCount = 0;
+                String replayProgressKey = progressKey;
+                if (replayProgressKey == null && mVodInfo != null) {
+                    replayProgressKey = mVodInfo.sourceKey + mVodInfo.id + mVodInfo.playFlag + mVodInfo.playIndex;
+                }
+                if (replayProgressKey != null) {
+                    CacheManager.delete(MD5.string2MD5(replayProgressKey), 0);
+                }
                 play();
             }
 
