@@ -10,11 +10,9 @@
 
 ------------------------------------------------------------------------
 
-## 📄 开源协议（License）
+## 📄 开源协议
 
-本项目基于原项目 TVBoxOSC，遵循：
-
-GNU Affero General Public License v3.0 (AGPL-3.0)
+本项目遵循：GNU Affero General Public License v3.0 (AGPL-3.0)
 
 -   你可以自由使用、修改和分发本项目
 -   如果你部署为网络服务（如 Web/SaaS），必须公开源码
