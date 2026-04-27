@@ -17,6 +17,7 @@ import com.github.tvbox.osc.ui.activity.DetailActivity;
 import com.github.tvbox.osc.ui.adapter.GridAdapter;
 import com.github.tvbox.osc.ui.dialog.GridFilterDialog;
 import com.github.tvbox.osc.ui.tv.widget.LoadMoreView;
+import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.owen.tvrecyclerview.widget.TvRecyclerView;
@@ -126,7 +127,11 @@ public class GridFragment extends BaseLazyFragment {
                     } else {
                         gridAdapter.addData(absXml.movie.videoList);
                     }
-                    page++;
+                    if (absXml.movie.page > 0) {
+                        page = absXml.movie.page + 1;
+                    } else {
+                        page++;
+                    }
                     maxPage = absXml.movie.pagecount;
                 } else {
                     if (page == 1) {
@@ -147,6 +152,11 @@ public class GridFragment extends BaseLazyFragment {
     }
 
     private void initData() {
+        if (sortData == null) {
+            LOG.e("GridFragment: sortData is null, cannot load list");
+            showEmpty();
+            return;
+        }
         showLoading();
         isLoad = false;
         sourceViewModel.getList(sortData, page);

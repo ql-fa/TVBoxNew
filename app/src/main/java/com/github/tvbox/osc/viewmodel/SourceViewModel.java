@@ -183,6 +183,11 @@ public class SourceViewModel extends ViewModel {
     }
 
     public void getList(MovieSort.SortData sortData, int page) {
+        if (sortData == null) {
+            LOG.e("getList: sortData is null, skip request");
+            listResult.postValue(null);
+            return;
+        }
         SourceBean homeSourceBean = ApiConfig.get().getHomeSourceBean();
         int type = homeSourceBean.getType();
         if (type == 3) {
@@ -198,19 +203,24 @@ public class SourceViewModel extends ViewModel {
                 }
             });
         } else if (type == 0 || type == 1) {
+            if (sortData.filterSelect == null) {
+                // Some XML parsers may bypass field initializers and leave maps null.
+                sortData.filterSelect = new java.util.HashMap<>();
+            }
+            if (type == 0) {
+                String selectedYear = sortData.filterSelect.get("year");
+                if (selectedYear != null && !selectedYear.isEmpty()) {
+                    requestXmlListWithYearFilter(homeSourceBean, sortData, page, selectedYear);
+                    return;
+                }
+            }
+
             com.lzy.okgo.request.GetRequest<String> listRequest = OkGo.<String>get(homeSourceBean.getApi())
                     .tag(homeSourceBean.getApi())
                     .params("ac", type == 0 ? "videolist" : "detail")
                     .params("t", sortData.id)
                     .params("pg", page);
-            for (java.util.Map.Entry<String, String> entry : sortData.filterSelect.entrySet()) {
-                if ("year".equals(entry.getKey()) && "older".equals(entry.getValue())) {
-                    continue;
-                }
-                if (entry.getValue() != null && !entry.getValue().isEmpty()) {
-                    listRequest.params(entry.getKey(), entry.getValue());
-                }
-            }
+            appendListFilterParams(listRequest, sortData.filterSelect, false, true);
             listRequest.execute(new AbsCallback<String>() {
 
                         @Override
@@ -240,12 +250,102 @@ public class SourceViewModel extends ViewModel {
                         @Override
                         public void onError(Response<String> response) {
                             super.onError(response);
+                            LOG.e("getList: onError code=" + response.code() + " msg=" + response.message());
                             listResult.postValue(null);
                         }
                     });
         } else {
             listResult.postValue(null);
         }
+    }
+
+    private void appendListFilterParams(com.lzy.okgo.request.GetRequest<String> request,
+                                        java.util.HashMap<String, String> filterSelect,
+                                        boolean skipYearParam,
+                                        boolean skipYearOlder) {
+        for (java.util.Map.Entry<String, String> entry : filterSelect.entrySet()) {
+            if (skipYearParam && "year".equals(entry.getKey())) {
+                continue;
+            }
+            if (skipYearOlder && "year".equals(entry.getKey()) && "older".equals(entry.getValue())) {
+                continue;
+            }
+            if (entry.getValue() != null && !entry.getValue().isEmpty()) {
+                request.params(entry.getKey(), entry.getValue());
+            }
+        }
+    }
+
+    private void requestXmlListWithYearFilter(SourceBean homeSourceBean,
+                                              MovieSort.SortData sortData,
+                                              int page,
+                                              String selectedYear) {
+        requestXmlListWithYearFilter(homeSourceBean, sortData, page, selectedYear, new ArrayList<>(), page, 0, 30);
+    }
+
+    private void requestXmlListWithYearFilter(SourceBean homeSourceBean,
+                                              MovieSort.SortData sortData,
+                                              int page,
+                                              String selectedYear,
+                                              ArrayList<Movie.Video> collected,
+                                              int startPage,
+                                              int pagesScanned,
+                                              int targetSize) {
+        com.lzy.okgo.request.GetRequest<String> listRequest = OkGo.<String>get(homeSourceBean.getApi())
+                .tag(homeSourceBean.getApi())
+                .params("ac", "videolist")
+                .params("t", sortData.id)
+                .params("pg", page);
+        appendListFilterParams(listRequest, sortData.filterSelect, true, true);
+        listRequest.execute(new AbsCallback<String>() {
+            @Override
+            public String convertResponse(okhttp3.Response response) throws Throwable {
+                if (response.body() != null) {
+                    return response.body().string();
+                } else {
+                    throw new IllegalStateException("网络请求错误");
+                }
+            }
+
+            @Override
+            public void onSuccess(Response<String> response) {
+                String xmlText = response.body();
+                AbsXml absXml = xml(null, xmlText, homeSourceBean.getKey());
+                if (absXml == null || absXml.movie == null || absXml.movie.videoList == null) {
+                    listResult.postValue(absXml);
+                    return;
+                }
+                filterByYearSelection(absXml, selectedYear);
+                int pageCount = absXml.movie.pagecount;
+                int currentPage = absXml.movie.page;
+                int effectiveTargetSize = targetSize;
+                if (absXml.movie.pagesize > 0) {
+                    effectiveTargetSize = absXml.movie.pagesize;
+                }
+                if (!absXml.movie.videoList.isEmpty()) {
+                    collected.addAll(absXml.movie.videoList);
+                }
+                boolean needMore = collected.size() < effectiveTargetSize
+                        && currentPage > 0
+                        && pageCount > 0
+                        && currentPage < pageCount
+                        && pagesScanned < 50;
+                if (needMore) {
+                    requestXmlListWithYearFilter(homeSourceBean, sortData, currentPage + 1, selectedYear, collected, startPage, pagesScanned + 1, effectiveTargetSize);
+                } else {
+                    absXml.movie.videoList = new ArrayList<>(collected);
+                    absXml.movie.page = currentPage > 0 ? currentPage : startPage;
+                    listResult.postValue(absXml);
+                }
+            }
+
+            @Override
+            public void onError(Response<String> response) {
+                super.onError(response);
+                LOG.e("requestXmlListWithYearFilter: onError code=" + response.code() + " msg=" + response.message());
+                listResult.postValue(null);
+            }
+        });
     }
 
     interface HomeRecCallback {
@@ -674,20 +774,8 @@ public class SourceViewModel extends ViewModel {
                     }
                 } else {
                     // API 不提供 filters 时，自动为每个分类注入年份过滤
-                    int currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR);
-                    ArrayList<MovieSort.SortFilter> yearFilters = new ArrayList<>();
-                    MovieSort.SortFilter yearFilter = new MovieSort.SortFilter();
-                    yearFilter.key = "year";
-                    yearFilter.name = "年份";
-                    yearFilter.values = new LinkedHashMap<>();
-                    yearFilter.values.put("全部", "");
-                    for (int y = currentYear; y >= 2020; y--) {
-                        yearFilter.values.put(String.valueOf(y), String.valueOf(y));
-                    }
-                    yearFilter.values.put("更早", "older");
-                    yearFilters.add(yearFilter);
                     for (MovieSort.SortData sort : data.classes.sortList) {
-                        sort.filters = new ArrayList<>(yearFilters);
+                        sort.filters = buildYearFilters();
                     }
                 }
             } catch (Throwable th) {
@@ -706,22 +794,83 @@ public class SourceViewModel extends ViewModel {
             xstream.processAnnotations(AbsSortXml.class);
             xstream.ignoreUnknownElements();
             AbsSortXml data = (AbsSortXml) xstream.fromXML(xml);
-            for (MovieSort.SortData sort : data.classes.sortList) {
-                if (sort.filters == null) {
-                    sort.filters = new ArrayList<>();
+            if (data.classes != null && data.classes.sortList != null) {
+                for (MovieSort.SortData sort : data.classes.sortList) {
+                    if (sort.filters == null || sort.filters.isEmpty()) {
+                        sort.filters = buildYearFilters();
+                    }
+                    if (sort.filterSelect == null) {
+                        sort.filterSelect = new java.util.HashMap<>();
+                    }
                 }
             }
             return data;
         } catch (Exception e) {
+            LOG.e("sortXml parse error: " + e.getMessage());
             return null;
         }
     }
 
+    private ArrayList<MovieSort.SortFilter> buildYearFilters() {
+        int currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR);
+        ArrayList<MovieSort.SortFilter> filters = new ArrayList<>();
+        MovieSort.SortFilter yearFilter = new MovieSort.SortFilter();
+        yearFilter.key = "year";
+        yearFilter.name = "年份";
+        yearFilter.values = new LinkedHashMap<>();
+        yearFilter.values.put("全部", "");
+        for (int y = currentYear; y >= 2020; y--) {
+            yearFilter.values.put(String.valueOf(y), String.valueOf(y));
+        }
+        yearFilter.values.put("更早", "older");
+        filters.add(yearFilter);
+        return filters;
+    }
+
+    private void filterByYearSelection(AbsXml data, String selectedYear) {
+        if (data == null || data.movie == null || data.movie.videoList == null) {
+            return;
+        }
+        ArrayList<Movie.Video> filtered = new ArrayList<>();
+        boolean isOlder = "older".equals(selectedYear);
+        Integer targetYear = null;
+        if (!isOlder) {
+            try {
+                targetYear = Integer.parseInt(selectedYear);
+            } catch (Throwable th) {
+                return;
+            }
+        }
+        for (Movie.Video video : data.movie.videoList) {
+            if (video == null) {
+                continue;
+            }
+            int uiYear = video.year;
+            if (uiYear <= 0) {
+                continue;
+            }
+            if (isOlder) {
+                if (uiYear < 2020) {
+                    filtered.add(video);
+                }
+            } else if (targetYear != null && uiYear == targetYear) {
+                filtered.add(video);
+            }
+        }
+        data.movie.videoList = filtered;
+    }
+
     private void absXml(AbsXml data, String sourceKey) {
+        if (data == null) {
+            return;
+        }
         if (data.movie != null && data.movie.videoList != null) {
             for (Movie.Video video : data.movie.videoList) {
                 if (video.urlBean != null && video.urlBean.infoList != null) {
                     for (Movie.Video.UrlBean.UrlInfo urlInfo : video.urlBean.infoList) {
+                        if (urlInfo.urls == null) {
+                            continue;
+                        }
                         String[] str = null;
                         if (urlInfo.urls.contains("#")) {
                             str = urlInfo.urls.split("#");
@@ -797,6 +946,9 @@ public class SourceViewModel extends ViewModel {
 
     private AbsXml xml(MutableLiveData<AbsXml> result, String xml, String sourceKey) {
         try {
+            if (xml == null || xml.isEmpty()) {
+                throw new IllegalArgumentException("Empty XML response");
+            }
             XStream xstream = new XStream(new DomDriver());//创建Xstram对象
             xstream.autodetectAnnotations(true);
             xstream.processAnnotations(AbsXml.class);
@@ -822,6 +974,8 @@ public class SourceViewModel extends ViewModel {
             }
             return data;
         } catch (Exception e) {
+            LOG.e("xml parse error: " + e.getMessage() + " | cause=" + (e.getCause() != null ? e.getCause().getMessage() : "none") + " | preview=" + (xml != null ? xml.substring(0, Math.min(300, xml.length())) : "null"));
+            e.printStackTrace();
             if (searchResult == result) {
                 EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_SEARCH_RESULT, null));
             } else if (quickSearchResult == result) {

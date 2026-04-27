@@ -73,12 +73,13 @@ public class VodInfo implements Serializable {
             seriesFlags = new ArrayList<>();
             for (Movie.Video.UrlBean.UrlInfo urlInfo : video.urlBean.infoList) {
                 if (urlInfo.beanList != null && urlInfo.beanList.size() > 0) {
+                    String flagName = (urlInfo.flag == null || urlInfo.flag.trim().isEmpty()) ? "默认线路" : urlInfo.flag;
                     List<VodSeries> seriesList = new ArrayList<>();
                     for (Movie.Video.UrlBean.UrlInfo.InfoBean infoBean : urlInfo.beanList) {
                         seriesList.add(new VodSeries(infoBean.name, infoBean.url));
                     }
-                    tempSeriesMap.put(urlInfo.flag, seriesList);
-                    seriesFlags.add(new VodSeriesFlag(urlInfo.flag));
+                    tempSeriesMap.put(flagName, seriesList);
+                    seriesFlags.add(new VodSeriesFlag(flagName));
                 }
             }
             SourceBean sb = ApiConfig.get().getSource(video.sourceKey);
@@ -89,10 +90,12 @@ public class VodInfo implements Serializable {
 
                     @Override
                     public int compare(VodSeriesFlag a, VodSeriesFlag b) {
-                        if (a.name.contains(PREFIX) && b.name.contains(PREFIX))
-                            return a.name.compareTo(b.name);
-                        if (a.name.contains(PREFIX) && !b.name.contains(PREFIX)) return -1;
-                        if (!a.name.contains(PREFIX) && b.name.contains(PREFIX)) return 1;
+                        String aName = a == null || a.name == null ? "" : a.name;
+                        String bName = b == null || b.name == null ? "" : b.name;
+                        if (aName.contains(PREFIX) && bName.contains(PREFIX))
+                            return aName.compareTo(bName);
+                        if (aName.contains(PREFIX) && !bName.contains(PREFIX)) return -1;
+                        if (!aName.contains(PREFIX) && bName.contains(PREFIX)) return 1;
                         return 0;
                     }
                 });
