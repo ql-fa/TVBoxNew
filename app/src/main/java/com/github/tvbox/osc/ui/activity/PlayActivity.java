@@ -83,6 +83,7 @@ public class PlayActivity extends BaseActivity {
     private VodController mController;
     private SourceViewModel sourceViewModel;
     private Handler mHandler;
+    private boolean replayFromStartOnce;
 
     @Override
     protected int getLayoutResID() {
@@ -125,6 +126,10 @@ public class PlayActivity extends BaseActivity {
 
             @Override
             public long getSavedProgress(String url) {
+                if (replayFromStartOnce) {
+                    replayFromStartOnce = false;
+                    return 0;
+                }
                 int st = 0;
                 try {
                     st = mVodPlayerCfg.getInt("st");
@@ -174,6 +179,7 @@ public class PlayActivity extends BaseActivity {
             @Override
             public void replay() {
                 autoRetryCount = 0;
+                replayFromStartOnce = true;
                 String replayProgressKey = progressKey;
                 if (replayProgressKey == null && mVodInfo != null) {
                     replayProgressKey = mVodInfo.sourceKey + mVodInfo.id + mVodInfo.playFlag + mVodInfo.playIndex;
