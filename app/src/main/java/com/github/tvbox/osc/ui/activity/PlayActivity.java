@@ -146,6 +146,9 @@ public class PlayActivity extends BaseActivity {
             @Override
             public void playNext(boolean rmProgress) {
                 String preProgressKey = progressKey;
+                if (rmProgress && mVideoView != null) {
+                    mVideoView.skipProgressSaveOnce();
+                }
                 PlayActivity.this.playNext();
                 if (rmProgress && preProgressKey != null)
                     CacheManager.delete(MD5.string2MD5(preProgressKey), 0);
@@ -174,6 +177,9 @@ public class PlayActivity extends BaseActivity {
                 String replayProgressKey = progressKey;
                 if (replayProgressKey == null && mVodInfo != null) {
                     replayProgressKey = mVodInfo.sourceKey + mVodInfo.id + mVodInfo.playFlag + mVodInfo.playIndex;
+                }
+                if (mVideoView != null) {
+                    mVideoView.skipProgressSaveOnce();
                 }
                 if (replayProgressKey != null) {
                     CacheManager.delete(MD5.string2MD5(replayProgressKey), 0);
