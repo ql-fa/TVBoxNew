@@ -20,6 +20,7 @@ import com.github.tvbox.osc.ui.dialog.ApiDialog;
 import com.github.tvbox.osc.ui.dialog.BackupDialog;
 import com.github.tvbox.osc.ui.dialog.SelectDialog;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
+import com.github.tvbox.osc.util.GiteeUpdateHelper;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.OkGoHelper;
 import com.github.tvbox.osc.util.PlayerHelper;
@@ -106,8 +107,13 @@ public class ModelSettingFragment extends BaseLazyFragment {
             @Override
             public void onClick(View v) {
                 FastClickCheckUtil.check(v);
-                AboutDialog dialog = new AboutDialog(mActivity);
-                dialog.show();
+                GiteeUpdateHelper.checkUpdate(mActivity, new Runnable() {
+                    @Override
+                    public void run() {
+                        AboutDialog dialog = new AboutDialog(mActivity);
+                        dialog.show();
+                    }
+                });
             }
         });
         findViewById(R.id.llHomeApi).setOnClickListener(new View.OnClickListener() {
