@@ -50,11 +50,23 @@ jobs:
             -PRELEASE_KEY_ALIAS="${{ secrets.RELEASE_KEY_ALIAS }}" \
             -PRELEASE_KEY_PASSWORD="${{ secrets.RELEASE_KEY_PASSWORD }}"
 
+      - name: Generate SHA256 for APK
+        run: |
+          set -e
+          shopt -s nullglob
+          for apk in app/build/outputs/apk/release/*.apk; do
+            sha_file="${apk%.apk}.sha256"
+            sha256sum "$apk" | awk '{print $1}' > "$sha_file"
+            echo "Generated $sha_file"
+          done
+
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: app/build/outputs/apk/release/*.apk
+          files: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/release/*.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
