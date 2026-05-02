@@ -21,9 +21,8 @@
 
         <TextView
             android:id="@+id/tvName"
-            android:layout_width="@dimen/vs_0"
+            android:layout_width="wrap_content"
             android:layout_height="match_parent"
-            android:layout_weight="1"
             android:focusable="false"
             android:focusableInTouchMode="false"
             android:gravity="left|center_vertical"
@@ -34,10 +33,26 @@
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/tvDate"
+            android:id="@+id/tvVersion"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginLeft="@dimen/vs_12"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:gravity="left|center_vertical"
+            android:textColor="@android:color/white"
+            android:textSize="@dimen/ts_20"
+            tools:text="vnightly" />
+
+        <View
             android:layout_width="@dimen/vs_0"
             android:layout_height="match_parent"
-            android:layout_weight="1"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/tvDate"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
             android:focusable="false"
             android:focusableInTouchMode="false"
             android:gravity="right|center_vertical"

@@ -9,6 +9,7 @@ import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
+import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -22,6 +23,7 @@ import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.viewpager.widget.ViewPager;
 
+import com.github.tvbox.osc.BuildConfig;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.base.BaseActivity;
@@ -66,6 +68,7 @@ import me.jessyan.autosize.utils.AutoSizeUtils;
 public class HomeActivity extends BaseActivity {
     private LinearLayout topLayout;
     private LinearLayout contentLayout;
+    private TextView tvVersion;
     private TextView tvDate;
     private TvRecyclerView mGridView;
     private NoScrollViewPager mViewPager;
@@ -116,7 +119,9 @@ public class HomeActivity extends BaseActivity {
 
     private void initView() {
         this.topLayout = findViewById(R.id.topLayout);
+        this.tvVersion = findViewById(R.id.tvVersion);
         this.tvDate = findViewById(R.id.tvDate);
+        this.tvVersion.setText(" " + getDisplayVersion());
         this.contentLayout = findViewById(R.id.contentLayout);
         this.mGridView = findViewById(R.id.mGridView);
         this.mViewPager = findViewById(R.id.mViewPager);
@@ -198,6 +203,10 @@ public class HomeActivity extends BaseActivity {
                 initViewPager(absXml);
             }
         });
+    }
+
+    private String getDisplayVersion() {
+        return TextUtils.isEmpty(BuildConfig.VERSION_NAME) ? "nightly" : BuildConfig.VERSION_NAME;
     }
 
     private boolean dataInitOk = false;
