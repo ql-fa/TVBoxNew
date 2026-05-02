@@ -9,6 +9,9 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
 import android.widget.Toast;
+import android.app.UiModeManager;
+import android.content.Context;
+import android.content.res.Configuration;
 
 import androidx.core.content.FileProvider;
 import androidx.appcompat.app.AlertDialog;
@@ -40,6 +43,7 @@ public class GiteeUpdateHelper {
     private static final Pattern VERSION_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)+)");
     private static final Pattern SHA256_PATTERN = Pattern.compile("([a-fA-F0-9]{64})");
     private static final OkHttpClient CLIENT = new OkHttpClient();
+    private static AlertDialog downloadingDialog;
 
     private GiteeUpdateHelper() {
     }
@@ -70,6 +74,7 @@ public class GiteeUpdateHelper {
                     }
 
                     if (!localNightly && compareVersion(remoteVersion, localVersion) <= 0) {
+                        postToast(activity, "已经是最新版本");
                         postNoUpdate(onNoUpdate, activity);
                         return;
                     }
@@ -188,11 +193,11 @@ public class GiteeUpdateHelper {
     }
 
     private static void downloadAndInstall(final Activity activity, final ReleaseAssetPair pair) {
+        showDownloadingDialog(activity);
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    postToast(activity, "正在下载更新包...");
                     File dir = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
                     if (dir == null) {
                         throw new IOException("下载目录不可用");
@@ -219,14 +224,39 @@ public class GiteeUpdateHelper {
                     activity.runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
+                            dismissDownloadingDialog();
+                            Toast.makeText(activity, "下载完成，准备安装", Toast.LENGTH_SHORT).show();
                             installApk(activity, apkFile);
                         }
                     });
                 } catch (Throwable e) {
+                    dismissDownloadingDialog();
                     postToast(activity, "更新失败: " + e.getMessage());
                 }
             }
         }).start();
+    }
+
+    private static void showDownloadingDialog(final Activity activity) {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                dismissDownloadingDialog();
+                downloadingDialog = new AlertDialog.Builder(activity)
+                        .setTitle("正在下载")
+                        .setMessage("正在下载更新包，请稍候...")
+                        .setCancelable(false)
+                        .create();
+                downloadingDialog.show();
+            }
+        });
+    }
+
+    private static void dismissDownloadingDialog() {
+        if (downloadingDialog != null && downloadingDialog.isShowing()) {
+            downloadingDialog.dismiss();
+        }
+        downloadingDialog = null;
     }
 
     private static void downloadFile(String url, File output) throws Exception {
@@ -280,13 +310,21 @@ public class GiteeUpdateHelper {
     }
 
     private static void installApk(Activity activity, File apkFile) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        // Detect TV device: on TV, Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES doesn't exist
+        // and canRequestPackageInstalls() may always return false. Just try to install directly.
+        boolean isTv = isTvDevice(activity);
+
+        if (!isTv && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             PackageManager pm = activity.getPackageManager();
             if (!pm.canRequestPackageInstalls()) {
                 Toast.makeText(activity, "请先允许安装未知来源应用", Toast.LENGTH_LONG).show();
-                Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:" + activity.getPackageName()));
-                activity.startActivity(intent);
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:" + activity.getPackageName()));
+                    activity.startActivity(intent);
+                } catch (ActivityNotFoundException e) {
+                    Toast.makeText(activity, "请在系统设置中允许安装未知来源应用", Toast.LENGTH_LONG).show();
+                }
                 return;
             }
         }
@@ -302,6 +340,17 @@ public class GiteeUpdateHelper {
         } catch (ActivityNotFoundException e) {
             Toast.makeText(activity, "未找到可用安装器", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private static boolean isTvDevice(Context context) {
+        UiModeManager uiModeManager = (UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
+        if (uiModeManager != null
+                && uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION) {
+            return true;
+        }
+        PackageManager pm = context.getPackageManager();
+        return pm.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
+                || pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK);
     }
 
     private static String extractVersion(String text) {
