@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.DisplayMetrics;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,13 +17,14 @@ import androidx.fragment.app.FragmentManager;
 
 import com.github.tvbox.osc.callback.EmptyCallback;
 import com.github.tvbox.osc.callback.LoadingCallback;
+import com.github.tvbox.osc.util.AutoSizeHelper;
+import com.github.tvbox.osc.util.LOG;
 import com.kingja.loadsir.callback.Callback;
 import com.kingja.loadsir.core.LoadService;
 import com.kingja.loadsir.core.LoadSir;
 
 import java.util.List;
 
-import me.jessyan.autosize.AutoSize;
 import me.jessyan.autosize.internal.CustomAdapt;
 
 /**
@@ -65,7 +67,9 @@ public abstract class BaseLazyFragment extends Fragment implements CustomAdapt {
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        AutoSize.autoConvertDensity(getActivity(), getSizeInDp(), isBaseOnWidth());
+        logMetrics("fragment.onCreateView.before");
+        AutoSizeHelper.applyFixedWidth(getActivity());
+        logMetrics("fragment.onCreateView.after");
         if (null == rootView) {
             rootView = inflater.inflate(getLayoutResID(), container, false);
         }
@@ -198,7 +202,9 @@ public abstract class BaseLazyFragment extends Fragment implements CustomAdapt {
      */
     @Override
     public void onResume() {
-        AutoSize.autoConvertDensity(getActivity(), getSizeInDp(), isBaseOnWidth());
+        logMetrics("fragment.onResume.before");
+        AutoSizeHelper.applyFixedWidth(getActivity());
+        logMetrics("fragment.onResume.after");
         super.onResume();
         // 如果不是第一次可见
         if (!mIsFirstVisible) {
@@ -296,6 +302,23 @@ public abstract class BaseLazyFragment extends Fragment implements CustomAdapt {
         if (getActivity() != null && getActivity() instanceof CustomAdapt)
             return ((CustomAdapt) getActivity()).isBaseOnWidth();
         return true;
+    }
+
+    private void logMetrics(String stage) {
+        if (getActivity() == null) {
+            return;
+        }
+        DisplayMetrics displayMetrics = getActivity().getResources().getDisplayMetrics();
+        LOG.i("autosize " + getClass().getSimpleName()
+                + " stage=" + stage
+            + ", designWidth=" + AutoSizeHelper.getFixedDesignWidthDp()
+                + ", width=" + displayMetrics.widthPixels
+                + ", height=" + displayMetrics.heightPixels
+                + ", density=" + displayMetrics.density
+                + ", densityDpi=" + displayMetrics.densityDpi
+                + ", scaledDensity=" + displayMetrics.scaledDensity
+                + ", xdpi=" + displayMetrics.xdpi
+                + ", ydpi=" + displayMetrics.ydpi);
     }
 
 

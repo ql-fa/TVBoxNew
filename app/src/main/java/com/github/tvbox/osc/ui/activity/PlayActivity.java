@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.util.DisplayMetrics;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -47,6 +48,7 @@ import com.github.tvbox.osc.player.controller.VodController;
 import com.github.tvbox.osc.player.thirdparty.MXPlayer;
 import com.github.tvbox.osc.player.thirdparty.ReexPlayer;
 import com.github.tvbox.osc.util.AdBlocker;
+import com.github.tvbox.osc.util.AutoSizeHelper;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.LOG;
@@ -71,7 +73,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import me.jessyan.autosize.AutoSize;
 import xyz.doikki.videoplayer.player.ProgressManager;
 import xyz.doikki.videoplayer.player.VideoView;
 
@@ -867,8 +868,11 @@ public class PlayActivity extends BaseActivity {
         @Override
         public void setOverScrollMode(int mode) {
             super.setOverScrollMode(mode);
-            if (mContext instanceof Activity)
-                AutoSize.autoConvertDensityOfCustomAdapt((Activity) mContext, PlayActivity.this);
+            if (mContext instanceof Activity) {
+                logAutoSizeMetrics("play.webview.before");
+                AutoSizeHelper.applyFixedWidth((Activity) mContext);
+                logAutoSizeMetrics("play.webview.after");
+            }
         }
 
         @Override
@@ -949,6 +953,19 @@ public class PlayActivity extends BaseActivity {
         mSysWebClient = new SysWebClient();
         webView.setWebViewClient(mSysWebClient);
         webView.setBackgroundColor(Color.BLACK);
+    }
+
+    private void logAutoSizeMetrics(String stage) {
+        DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
+        LOG.i("autosize PlayActivity"
+                + " stage=" + stage
+                + ", width=" + displayMetrics.widthPixels
+                + ", height=" + displayMetrics.heightPixels
+                + ", density=" + displayMetrics.density
+                + ", densityDpi=" + displayMetrics.densityDpi
+                + ", scaledDensity=" + displayMetrics.scaledDensity
+                + ", xdpi=" + displayMetrics.xdpi
+                + ", ydpi=" + displayMetrics.ydpi);
     }
 
     private class SysWebClient extends WebViewClient {

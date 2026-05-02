@@ -1,5 +1,9 @@
 package com.github.tvbox.osc.base;
 
+import android.content.res.Resources;
+import android.os.Build;
+import android.util.DisplayMetrics;
+
 import androidx.multidex.MultiDexApplication;
 
 import com.github.tvbox.osc.callback.EmptyCallback;
@@ -7,6 +11,7 @@ import com.github.tvbox.osc.callback.LoadingCallback;
 import com.github.tvbox.osc.data.AppDataManager;
 import com.github.tvbox.osc.server.ControlManager;
 import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.OkGoHelper;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.kingja.loadsir.core.LoadSir;
@@ -43,7 +48,24 @@ public class App extends MultiDexApplication {
                 .setSupportDP(false)
                 .setSupportSP(false)
                 .setSupportSubunits(Subunits.MM);
+        logAutoSizeInit();
         PlayerHelper.init();
+    }
+
+    private void logAutoSizeInit() {
+        DisplayMetrics displayMetrics = Resources.getSystem().getDisplayMetrics();
+        LOG.i("autosize app init"
+                + ", sdk=" + Build.VERSION.SDK_INT
+                + ", release=" + Build.VERSION.RELEASE
+                + ", brand=" + Build.BRAND
+                + ", model=" + Build.MODEL
+                + ", width=" + displayMetrics.widthPixels
+                + ", height=" + displayMetrics.heightPixels
+                + ", density=" + displayMetrics.density
+                + ", densityDpi=" + displayMetrics.densityDpi
+                + ", scaledDensity=" + displayMetrics.scaledDensity
+                + ", xdpi=" + displayMetrics.xdpi
+                + ", ydpi=" + displayMetrics.ydpi);
     }
 
     private void initParams() {
