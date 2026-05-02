@@ -163,12 +163,12 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
 
     @Override
     public float getSizeInDp() {
-        return isBaseOnWidth() ? 1280 : 720;
+        return 1366;
     }
 
     @Override
     public boolean isBaseOnWidth() {
-        return !(screenRatio >= 4.0f);
+        return true;
     }
 
 }
