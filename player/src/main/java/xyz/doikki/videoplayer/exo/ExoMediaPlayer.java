@@ -36,8 +36,8 @@ import xyz.doikki.videoplayer.player.VideoViewManager;
 
 public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
-    // Favor smoother VOD playback on slow networks: larger startup threshold and longer forward buffering.
-    private static final int EXO_MIN_BUFFER_MS = 120000;
+    // Buffer window: start fetching when below 4 min, stop at 6 min to reduce buffer fluctuation.
+    private static final int EXO_MIN_BUFFER_MS = 480000;
     private static final int EXO_MAX_BUFFER_MS = 600000;
     private static final int EXO_BUFFER_FOR_PLAYBACK_MS = 10000;
     private static final int EXO_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 20000;
