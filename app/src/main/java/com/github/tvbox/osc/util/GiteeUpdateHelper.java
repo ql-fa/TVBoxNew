@@ -310,9 +310,13 @@ public class GiteeUpdateHelper {
     }
 
     private static void installApk(Activity activity, File apkFile) {
+        // Log device information for debugging
+        logDeviceInfo(activity);
+        
         // Detect TV device: on TV, Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES doesn't exist
         // and canRequestPackageInstalls() may always return false. Just try to install directly.
         boolean isTv = isTvDevice(activity);
+        android.util.Log.i("GiteeUpdateHelper", "Device detected as TV: " + isTv);
 
         if (!isTv && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             PackageManager pm = activity.getPackageManager();
@@ -329,17 +333,251 @@ public class GiteeUpdateHelper {
             }
         }
 
-        Uri apkUri = FileProvider.getUriForFile(activity,
-                BuildConfig.APPLICATION_ID + ".fileprovider", apkFile);
-        Intent installIntent = new Intent(Intent.ACTION_VIEW);
-        installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
-        installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        try {
-            activity.startActivity(installIntent);
-        } catch (ActivityNotFoundException e) {
-            Toast.makeText(activity, "未找到可用安装器", Toast.LENGTH_SHORT).show();
+        // Try multiple installation methods to support various Android versions and devices
+        boolean installSuccess = false;
+
+        // Method 1: Try FileProvider URI (Android 7.0+, recommended)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            android.util.Log.i("GiteeUpdateHelper", "Attempting Method 1: FileProvider URI");
+            installSuccess = tryInstallWithFileProvider(activity, apkFile);
+            if (installSuccess) return;
         }
+
+        // Method 2: Try file:// URI (Android 6.0 and below)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            android.util.Log.i("GiteeUpdateHelper", "Attempting Method 2: file:// URI");
+            installSuccess = tryInstallWithFileUri(activity, apkFile);
+            if (installSuccess) return;
+        }
+
+        // Method 3: Try alternative package installers
+        if (!installSuccess) {
+            android.util.Log.i("GiteeUpdateHelper", "Attempting Method 3: Alternative installers");
+            installSuccess = tryInstallWithAlternativeInstallers(activity, apkFile);
+            if (installSuccess) return;
+        }
+
+        // Method 4: Try pm install command (for devices with root or system app)
+        if (!installSuccess) {
+            android.util.Log.i("GiteeUpdateHelper", "Attempting Method 4: PM command");
+            installSuccess = tryInstallWithPmCommand(activity, apkFile);
+            if (installSuccess) return;
+        }
+
+        // If all methods fail, show error
+        android.util.Log.e("GiteeUpdateHelper", "All installation methods failed!");
+        Toast.makeText(activity, "未找到可用安装器，请尝试以下方式：\n" +
+                "1.检查文件完整性\n2.手动安装APK文件\n3.检查系统权限设置", 
+            Toast.LENGTH_LONG).show();
+    }
+
+    /**
+     * Log device information for debugging installation issues
+     */
+    private static void logDeviceInfo(Context context) {
+        try {
+            PackageManager pm = context.getPackageManager();
+            
+            StringBuilder deviceInfo = new StringBuilder();
+            deviceInfo.append("Device Info - ");
+            deviceInfo.append("SDK:").append(Build.VERSION.SDK_INT).append(", ");
+            deviceInfo.append("Release:").append(Build.VERSION.RELEASE).append(", ");
+            deviceInfo.append("Device:").append(Build.DEVICE).append(", ");
+            deviceInfo.append("Manufacturer:").append(Build.MANUFACTURER).append(", ");
+            deviceInfo.append("Model:").append(Build.MODEL);
+            
+            // Check for TV features
+            boolean hasTV = pm.hasSystemFeature(PackageManager.FEATURE_TELEVISION);
+            boolean hasLeanback = pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+            deviceInfo.append(", TV:").append(hasTV).append(", Leanback:").append(hasLeanback);
+            
+            android.util.Log.i("GiteeUpdateHelper", deviceInfo.toString());
+        } catch (Exception e) {
+            android.util.Log.w("GiteeUpdateHelper", "Failed to log device info: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Try to install APK using FileProvider URI (for Android 7.0+)
+     */
+    private static boolean tryInstallWithFileProvider(Activity activity, File apkFile) {
+        try {
+            Uri apkUri = FileProvider.getUriForFile(activity,
+                    BuildConfig.APPLICATION_ID + ".fileprovider", apkFile);
+            Intent installIntent = new Intent(Intent.ACTION_VIEW);
+            installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+            installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            activity.startActivity(installIntent);
+            return true;
+        } catch (Exception e) {
+            android.util.Log.w("GiteeUpdateHelper", "FileProvider install failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Try to install APK using file:// URI (for Android 6.0 and below)
+     */
+    private static boolean tryInstallWithFileUri(Activity activity, File apkFile) {
+        try {
+            Uri apkUri = Uri.fromFile(apkFile);
+            Intent installIntent = new Intent(Intent.ACTION_VIEW);
+            installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+            installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity.startActivity(installIntent);
+            return true;
+        } catch (Exception e) {
+            android.util.Log.w("GiteeUpdateHelper", "File URI install failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Try to install using alternative package installers
+     * Supports: com.android.packageinstaller, com.google.android.packageinstaller, etc.
+     * Special support for Xiaomi TV GITV and MIUI TV systems
+     */
+    private static boolean tryInstallWithAlternativeInstallers(Activity activity, File apkFile) {
+        // Extended list including Xiaomi TV/GITV installers
+        String[] installerPackages = {
+            // Standard Android installers
+            "com.android.packageinstaller",
+            "com.google.android.packageinstaller",
+            "com.android.vending",
+            
+            // Xiaomi MIUI TV and GITV installers (priority for Xiaomi boxes)
+            "com.miui.packageinstaller",
+            "com.miui.tv.packageinstaller",
+            "com.mitv.packageinstaller",
+            "com.xiaomi.tv.installer",
+            "com.gitv.installer",
+            "com.gitv.packageinstaller",
+            
+            // Other TV box installers
+            "com.sec.android.app.samsungapps",
+            "com.oppo.market",
+            "com.huawei.android.packageinstaller",
+            
+            // Generic fallback installers
+            "com.android.installer",
+            "android.app.packageinstaller"
+        };
+
+        PackageManager pm = activity.getPackageManager();
+        StringBuilder availableInstallers = new StringBuilder("Available installers: ");
+        
+        // Log which installers are available on this device
+        for (String installerPackage : installerPackages) {
+            try {
+                pm.getPackageInfo(installerPackage, 0);
+                availableInstallers.append("[").append(installerPackage).append("] ");
+            } catch (Exception e) {
+                // Package not installed, skip
+            }
+        }
+        android.util.Log.i("GiteeUpdateHelper", availableInstallers.toString());
+
+        for (String installerPackage : installerPackages) {
+            try {
+                Uri apkUri;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    apkUri = FileProvider.getUriForFile(activity,
+                            BuildConfig.APPLICATION_ID + ".fileprovider", apkFile);
+                } else {
+                    apkUri = Uri.fromFile(apkFile);
+                }
+
+                Intent installIntent = new Intent(Intent.ACTION_VIEW);
+                installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+                installIntent.setPackage(installerPackage);
+                installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                }
+
+                // Check if this installer can handle the install intent
+                if (pm.resolveActivity(installIntent, 0) != null) {
+                    android.util.Log.i("GiteeUpdateHelper", "Attempting to launch installer: " + installerPackage);
+                    activity.startActivity(installIntent);
+                    android.util.Log.i("GiteeUpdateHelper", "Install with " + installerPackage + " succeeded");
+                    return true;
+                } else {
+                    android.util.Log.w("GiteeUpdateHelper", "Installer not available: " + installerPackage);
+                }
+            } catch (Exception e) {
+                android.util.Log.w("GiteeUpdateHelper", "Install with " + installerPackage + " failed: " + e.getMessage());
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Try to install using pm command (requires device with su or running as system app)
+     * This method works particularly well for Xiaomi TV boxes and other TV devices
+     */
+    private static boolean tryInstallWithPmCommand(Activity activity, File apkFile) {
+        if (!apkFile.exists() || !apkFile.canRead()) {
+            android.util.Log.w("GiteeUpdateHelper", "APK file doesn't exist or can't be read: " + apkFile.getAbsolutePath());
+            return false;
+        }
+
+        try {
+            String apkPath = apkFile.getAbsolutePath();
+            android.util.Log.i("GiteeUpdateHelper", "Trying pm install with path: " + apkPath);
+            
+            // Try multiple pm install variations
+            String[] commands = {
+                "pm install -r " + apkPath,           // Normal install with replace
+                "pm install -r -d " + apkPath,        // Allow downgrade
+                "pm install -r --user 0 " + apkPath,  // Specify user
+                "pm install -r -s " + apkPath         // Install on SD card if possible
+            };
+            
+            for (String command : commands) {
+                try {
+                    android.util.Log.i("GiteeUpdateHelper", "Executing: " + command);
+                    Process process = Runtime.getRuntime().exec(command);
+                    int exitCode = process.waitFor();
+                    
+                    // Read output for debugging
+                    java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getInputStream()));
+                    StringBuilder output = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        output.append(line).append("\n");
+                    }
+                    reader.close();
+                    
+                    // Check error stream
+                    java.io.BufferedReader errorReader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getErrorStream()));
+                    StringBuilder errorOutput = new StringBuilder();
+                    while ((line = errorReader.readLine()) != null) {
+                        errorOutput.append(line).append("\n");
+                    }
+                    errorReader.close();
+                    
+                    if (exitCode == 0) {
+                        android.util.Log.i("GiteeUpdateHelper", "PM install succeeded with: " + command);
+                        android.util.Log.i("GiteeUpdateHelper", "Output: " + output.toString());
+                        Toast.makeText(activity, "安装中，请稍候...", Toast.LENGTH_SHORT).show();
+                        return true;
+                    } else {
+                        android.util.Log.w("GiteeUpdateHelper", "PM install failed with exit code: " + exitCode);
+                        android.util.Log.w("GiteeUpdateHelper", "Command: " + command);
+                        android.util.Log.w("GiteeUpdateHelper", "Output: " + output.toString());
+                        android.util.Log.w("GiteeUpdateHelper", "Error: " + errorOutput.toString());
+                    }
+                } catch (Exception e) {
+                    android.util.Log.w("GiteeUpdateHelper", "Exception with command '" + command + "': " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("GiteeUpdateHelper", "PM command install failed: " + e.getMessage());
+        }
+        return false;
     }
 
     private static boolean isTvDevice(Context context) {
