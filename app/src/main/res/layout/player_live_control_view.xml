@@ -73,4 +73,15 @@
         android:tag="vod_control_loading"
         android:visibility="gone" />
 
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="@dimen/vs_40"
+        android:tag="vod_control_loading_text"
+        android:textColor="@android:color/white"
+        android:textSize="@dimen/ts_24"
+        android:visibility="gone"
+        tools:text="预缓存 35%" />
+
 </FrameLayout>

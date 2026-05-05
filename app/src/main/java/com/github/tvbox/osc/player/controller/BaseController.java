@@ -92,8 +92,17 @@ public abstract class BaseController extends BaseVideoController implements Gest
 
     private TextView mSlideInfo;
     private ProgressBar mLoading;
+    private TextView mLoadingText;
     private ViewGroup mPauseRoot;
     private TextView mPauseTime;
+
+    private final Runnable mUpdateBufferPercentRun = new Runnable() {
+        @Override
+        public void run() {
+            updateBufferPercentText();
+            mHandler.postDelayed(this, 500);
+        }
+    };
 
     @Override
     protected void initView() {
@@ -103,8 +112,39 @@ public abstract class BaseController extends BaseVideoController implements Gest
         setOnTouchListener(this);
         mSlideInfo = findViewWithTag("vod_control_slide_info");
         mLoading = findViewWithTag("vod_control_loading");
+        mLoadingText = findViewWithTag("vod_control_loading_text");
         mPauseRoot = findViewWithTag("vod_control_pause");
         mPauseTime = findViewWithTag("vod_control_pause_t");
+    }
+
+    private void updateBufferPercentText() {
+        if (mLoadingText == null || mControlWrapper == null) {
+            return;
+        }
+        int percent = mControlWrapper.getBufferedPercentage();
+        if (percent < 0) {
+            percent = 0;
+        } else if (percent > 100) {
+            percent = 100;
+        }
+        mLoadingText.setText("预缓存 " + percent + "%");
+    }
+
+    private void startBufferPercentUpdate() {
+        if (mLoadingText == null) {
+            return;
+        }
+        updateBufferPercentText();
+        mLoadingText.setVisibility(VISIBLE);
+        mHandler.removeCallbacks(mUpdateBufferPercentRun);
+        mHandler.postDelayed(mUpdateBufferPercentRun, 500);
+    }
+
+    private void stopBufferPercentUpdate() {
+        mHandler.removeCallbacks(mUpdateBufferPercentRun);
+        if (mLoadingText != null) {
+            mLoadingText.setVisibility(GONE);
+        }
     }
 
     @Override
@@ -119,27 +159,33 @@ public abstract class BaseController extends BaseVideoController implements Gest
         switch (playState) {
             case VideoView.STATE_IDLE:
                 mLoading.setVisibility(GONE);
+                stopBufferPercentUpdate();
                 break;
             case VideoView.STATE_PLAYING:
                 mPauseRoot.setVisibility(GONE);
                 mLoading.setVisibility(GONE);
+                stopBufferPercentUpdate();
                 break;
             case VideoView.STATE_PAUSED:
                 mPauseRoot.setVisibility(VISIBLE);
                 mLoading.setVisibility(GONE);
+                stopBufferPercentUpdate();
                 break;
             case VideoView.STATE_PREPARED:
             case VideoView.STATE_ERROR:
             case VideoView.STATE_BUFFERED:
                 mLoading.setVisibility(GONE);
+                stopBufferPercentUpdate();
                 break;
             case VideoView.STATE_PREPARING:
             case VideoView.STATE_BUFFERING:
                 mLoading.setVisibility(VISIBLE);
+                startBufferPercentUpdate();
                 break;
             case VideoView.STATE_PLAYBACK_COMPLETED:
                 mLoading.setVisibility(GONE);
                 mPauseRoot.setVisibility(GONE);
+                stopBufferPercentUpdate();
                 break;
         }
     }

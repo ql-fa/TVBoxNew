@@ -2,12 +2,16 @@ package xyz.doikki.videoplayer.exo;
 
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.ExoPlaybackException;
+import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.LoadControl;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
@@ -32,11 +36,13 @@ import xyz.doikki.videoplayer.player.VideoViewManager;
 
 public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
-    // Prefer stability over startup speed for VOD: larger steady buffer and safer rebuffer threshold.
-    private static final int EXO_MIN_BUFFER_MS = 70000;
-    private static final int EXO_MAX_BUFFER_MS = 180000;
-    private static final int EXO_BUFFER_FOR_PLAYBACK_MS = 3000;
-    private static final int EXO_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 12000;
+    // Favor smoother VOD playback on slow networks: larger startup threshold and longer forward buffering.
+    private static final int EXO_MIN_BUFFER_MS = 120000;
+    private static final int EXO_MAX_BUFFER_MS = 600000;
+    private static final int EXO_BUFFER_FOR_PLAYBACK_MS = 10000;
+    private static final int EXO_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 20000;
+    private static final int EXO_PREBUFFER_START_PERCENT = 12;
+    private static final long EXO_PREBUFFER_MAX_WAIT_MS = 20000L;
 
     protected Context mAppContext;
     protected SimpleExoPlayer mInternalPlayer;
@@ -46,10 +52,27 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
     private PlaybackParameters mSpeedPlaybackParameters;
 
     private boolean mIsPreparing;
+    private boolean mPreparedNotified;
+    private boolean mRenderingStartedNotified;
+    private long mPrepareStartElapsedMs;
 
     private LoadControl mLoadControl;
     private RenderersFactory mRenderersFactory;
     private TrackSelector mTrackSelector;
+    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
+
+    private final Runnable mPrepareBufferRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (mInternalPlayer == null || !mIsPreparing) {
+                return;
+            }
+            maybeStartAfterPreBuffer();
+            if (mIsPreparing) {
+                mMainHandler.postDelayed(this, 500L);
+            }
+        }
+    };
 
     public ExoMediaPlayer(Context context) {
         mAppContext = context.getApplicationContext();
@@ -102,7 +125,8 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
     @Override
     public void setDataSource(String path, Map<String, String> headers) {
-        mMediaSource = mMediaSourceHelper.getMediaSource(path, headers);
+        // Enable disk cache for Exo sources so fetched segments can be reused and buffered more steadily.
+        mMediaSource = mMediaSourceHelper.getMediaSource(path, headers, true);
     }
 
     @Override
@@ -139,9 +163,14 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
         if (mSpeedPlaybackParameters != null) {
             mInternalPlayer.setPlaybackParameters(mSpeedPlaybackParameters);
         }
+        mPreparedNotified = false;
+        mRenderingStartedNotified = false;
+        mPrepareStartElapsedMs = SystemClock.elapsedRealtime();
         mIsPreparing = true;
         mInternalPlayer.setMediaSource(mMediaSource);
+        mInternalPlayer.setPlayWhenReady(false);
         mInternalPlayer.prepare();
+        schedulePrepareBufferCheck();
     }
 
     @Override
@@ -152,6 +181,9 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
             mInternalPlayer.setVideoSurface(null);
             mIsPreparing = false;
         }
+        mPreparedNotified = false;
+        mRenderingStartedNotified = false;
+        stopPrepareBufferCheck();
     }
 
     @Override
@@ -186,6 +218,9 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
         }
 
         mIsPreparing = false;
+        mPreparedNotified = false;
+        mRenderingStartedNotified = false;
+        stopPrepareBufferCheck();
         mSpeedPlaybackParameters = null;
     }
 
@@ -200,7 +235,8 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
     public long getDuration() {
         if (mInternalPlayer == null)
             return 0;
-        return mInternalPlayer.getDuration();
+        long duration = mInternalPlayer.getDuration();
+        return duration == C.TIME_UNSET || duration < 0 ? 0 : duration;
     }
 
     @Override
@@ -237,8 +273,8 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
     @Override
     public void setOptions() {
-        //准备好就开始播放
-        mInternalPlayer.setPlayWhenReady(true);
+        // Delay autoplay until startup prebuffer threshold is reached.
+        mInternalPlayer.setPlayWhenReady(false);
     }
 
     @Override
@@ -268,10 +304,8 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
     public void onPlaybackStateChanged(int playbackState) {
         if (mPlayerEventListener == null) return;
         if (mIsPreparing) {
-            if (playbackState == Player.STATE_READY) {
-                mPlayerEventListener.onPrepared();
-                mPlayerEventListener.onInfo(MEDIA_INFO_RENDERING_START, 0);
-                mIsPreparing = false;
+            if (playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING) {
+                maybeStartAfterPreBuffer();
             }
             return;
         }
@@ -285,6 +319,55 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
             case Player.STATE_ENDED:
                 mPlayerEventListener.onCompletion();
                 break;
+        }
+    }
+
+    @Override
+    public void onIsPlayingChanged(boolean isPlaying) {
+        if (!isPlaying || mPlayerEventListener == null) {
+            return;
+        }
+        if (!mRenderingStartedNotified) {
+            mRenderingStartedNotified = true;
+            mPlayerEventListener.onInfo(MEDIA_INFO_RENDERING_START, 0);
+        }
+    }
+
+    private void schedulePrepareBufferCheck() {
+        mMainHandler.removeCallbacks(mPrepareBufferRunnable);
+        mMainHandler.post(mPrepareBufferRunnable);
+    }
+
+    private void stopPrepareBufferCheck() {
+        mMainHandler.removeCallbacks(mPrepareBufferRunnable);
+    }
+
+    private void notifyPreparedIfNeeded() {
+        if (!mPreparedNotified && mPlayerEventListener != null) {
+            mPlayerEventListener.onPrepared();
+            mPreparedNotified = true;
+        }
+    }
+
+    private void maybeStartAfterPreBuffer() {
+        if (mInternalPlayer == null || !mIsPreparing) {
+            return;
+        }
+
+        int bufferedPercent = getBufferedPercentage();
+        long elapsedMs = SystemClock.elapsedRealtime() - mPrepareStartElapsedMs;
+        long durationMs = mInternalPlayer.getDuration();
+        boolean unknownDuration = durationMs <= 0;
+        boolean reachPreBuffer = bufferedPercent >= EXO_PREBUFFER_START_PERCENT;
+        boolean waitTimeout = elapsedMs >= EXO_PREBUFFER_MAX_WAIT_MS;
+
+        if (reachPreBuffer || waitTimeout || unknownDuration) {
+            notifyPreparedIfNeeded();
+            mIsPreparing = false;
+            stopPrepareBufferCheck();
+            mInternalPlayer.setPlayWhenReady(true);
+        } else if (mPlayerEventListener != null) {
+            mPlayerEventListener.onInfo(MEDIA_INFO_BUFFERING_START, bufferedPercent);
         }
     }
 
