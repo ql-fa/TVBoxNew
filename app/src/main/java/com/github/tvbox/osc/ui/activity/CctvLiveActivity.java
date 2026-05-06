@@ -42,12 +42,14 @@ public class CctvLiveActivity extends BaseActivity {
     private static final String DESKTOP_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0";
     private static final long CHANNEL_LABEL_HIDE_DELAY_MS = 2500L;
     private static final long CHANNEL_MENU_HIDE_DELAY_MS = 5000L;
+    private static final long CHANNEL_LOAD_TIMEOUT_MS = 15000L;
 
     private WebView webView;
     private TextView tvChannelName;
     private LinearLayout channelMenuContainer;
     private TvRecyclerView channelRecyclerView;
     private View loadingOverlay;
+    private TextView tvLoadingStatus;
     private ChannelMenuAdapter channelMenuAdapter;
     private GestureDetector gestureDetector;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -63,6 +65,14 @@ public class CctvLiveActivity extends BaseActivity {
         @Override
         public void run() {
             hideChannelMenu();
+        }
+    };
+    private final Runnable channelLoadTimeoutTask = new Runnable() {
+        @Override
+        public void run() {
+            if (loadingOverlay != null && loadingOverlay.getVisibility() == View.VISIBLE && tvLoadingStatus != null) {
+                tvLoadingStatus.setText("加载失败，按上/下键切台重试");
+            }
         }
     };
 
@@ -82,6 +92,7 @@ public class CctvLiveActivity extends BaseActivity {
         channelMenuContainer = findViewById(R.id.channelMenuContainer);
         channelRecyclerView = findViewById(R.id.channelRecyclerView);
         loadingOverlay = findViewById(R.id.loadingOverlay);
+        tvLoadingStatus = findViewById(R.id.tvLoadingStatus);
         channelMenuContainer.bringToFront();
         tvChannelName.bringToFront();
         loadingOverlay.bringToFront();
@@ -208,13 +219,13 @@ public class CctvLiveActivity extends BaseActivity {
                     public void run() {
                         injectPlaybackScript();
                     }
-                }, 1200L);
+                }, 500L);
                 handler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
                         injectPlaybackScript();
                     }
-                }, 2800L);
+                }, 1500L);
             }
         });
     }
@@ -270,6 +281,8 @@ public class CctvLiveActivity extends BaseActivity {
         }
         showChannelLabel(item, currentChannelIndex + 1, channels.size());
         webView.loadUrl(item.url);
+        handler.removeCallbacks(channelLoadTimeoutTask);
+        handler.postDelayed(channelLoadTimeoutTask, CHANNEL_LOAD_TIMEOUT_MS);
     }
 
     private void selectChannel(int position) {
@@ -410,8 +423,8 @@ public class CctvLiveActivity extends BaseActivity {
                 + "moveVideo(video);"
                 + "clickMaybe('.vjs-big-play-button')||clickMaybe('.video-play-btn')||clickMaybe('.play-btn')||clickMaybe('[class*=play]');"
                 + "if(video&&video.readyState>2){moveVideo(video); if(video.currentTime>0||!video.paused){notifyPlaying();}}"
-                + "if(count>60){clearInterval(timer);window.__tvboxCctvInjected=false;}"
-                + "},500);"
+                + "if(count>150){clearInterval(timer);window.__tvboxCctvInjected=false;}"
+                + "},200);"
                 + "})();";
         evaluateScript(script);
     }
@@ -422,9 +435,13 @@ public class CctvLiveActivity extends BaseActivity {
             loadingOverlay.bringToFront();
             loadingOverlay.setVisibility(View.VISIBLE);
         }
+        if (tvLoadingStatus != null) {
+            tvLoadingStatus.setText("频道加载中......");
+        }
     }
 
     private void hideLoadingOverlay() {
+        handler.removeCallbacks(channelLoadTimeoutTask);
         if (loadingOverlay != null) {
             loadingOverlay.setVisibility(View.GONE);
         }
